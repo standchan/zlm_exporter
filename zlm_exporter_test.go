@@ -829,7 +829,7 @@ func TestExtractStreamInfo(t *testing.T) {
 			},
 		},
 	}
-	server := setupTestServer(t, ZlmAPIEndpointGetStream, mockResponse)
+	server := setupTestServer(t, ZlmAPIEndpointGetMediaList, mockResponse)
 	defer server.Close()
 
 	exporter, err := NewExporter(server.URL, MockZlmAPIServerSecret, promslog.New(&promslog.Config{}), Options{})

@@ -37,7 +37,7 @@ const (
 	ZlmAPIEndpointGetWorkThreads    = "index/api/getWorkThreadsLoad"
 	ZlmAPIEndpointGetStatistics     = "index/api/getStatistic"
 	ZlmAPIEndpointGetAllSession     = "index/api/getAllSession"
-	ZlmAPIEndpointGetStream         = "index/api/getMediaList"
+	ZlmAPIEndpointGetMediaList      = "index/api/getMediaList"
 	ZlmAPIEndpointListRtpServer     = "index/api/listRtpServer"
 )
 
@@ -577,22 +577,21 @@ type APIStreamInfoObjects []APIStreamInfoObject
 func (e *Exporter) extractStream(ctx context.Context, ch chan<- prometheus.Metric) {
 	processFunc := func(body io.ReadCloser) error {
 		var apiResponse ZLMAPIResponse[APIStreamInfoObjects]
-		if err := e.processAPIResponse(ZlmAPIEndpointGetStream, body, &apiResponse); err != nil {
+		if err := e.processAPIResponse(ZlmAPIEndpointGetMediaList, body, &apiResponse); err != nil {
 			return err
 		}
 
-		processedStreams := make(map[string]bool)
+		uniqueStreamKeys := make(map[string]bool)
 		for _, stream := range apiResponse.Data {
-			// stream total reader count
 			streamKey := fmt.Sprintf("%s_%s_%s", stream.Vhost, stream.App, stream.Stream)
 
-			if !processedStreams[streamKey] {
+			if !uniqueStreamKeys[streamKey] {
 				ch <- prometheus.MustNewConstMetric(StreamTotalReaderCount,
 					prometheus.GaugeValue,
 					float64(stream.TotalReaderCount),
 					stream.App, stream.Stream, stream.Vhost)
 
-				processedStreams[streamKey] = true
+				uniqueStreamKeys[streamKey] = true
 			}
 
 			// stream info
@@ -615,15 +614,24 @@ func (e *Exporter) extractStream(ctx context.Context, ch chan<- prometheus.Metri
 				stream.Vhost, stream.App, stream.Stream, stream.Schema)
 
 			// stream bandwidths
+			// 这个有问题，不是总带宽，是码率
 			ch <- prometheus.MustNewConstMetric(StreamBandwidths,
 				prometheus.GaugeValue,
 				stream.BytesSpeed,
 				stream.Vhost, stream.App, stream.Stream, stream.Schema, stream.OriginTypeStr)
+			// todo: 增加一个zlm_stream_bytes 字段，表示流的总流量
 		}
 
+		// stream total
+		// 这里有阻塞问题
+		e.log.Info("stream total", "total", len(uniqueStreamKeys))
+		ch <- prometheus.MustNewConstMetric(StreamTotal,
+			prometheus.GaugeValue,
+			float64(len(uniqueStreamKeys)))
+		e.log.Info("steam total end")
 		return nil
 	}
-	e.fetchHTTP(ctx, ch, ZlmAPIEndpointGetStream, processFunc)
+	e.fetchHTTP(ctx, ch, ZlmAPIEndpointGetMediaList, processFunc)
 }
 
 type APIRtpServerObject struct {
